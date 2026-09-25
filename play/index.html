@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Morse Message</title>
+
+<!-- Link-Vorschau in WhatsApp / iMessage -->
+<meta property="og:title" content="📡 Morse Message">
+<meta property="og:description" content="Morse-Nachricht – tippen zum Abhören">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://morsemessage.github.io/icon-512.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/icon-512.png">
+
+<!--
+  Diese Seite sieht nur, wer die App NICHT installiert hat (oder den Link
+  bewusst in Safari öffnet). Mit installierter App fängt iOS den Link über
+  Universal Links ab und öffnet direkt die App.
+-->
+<style>
+  :root {
+    /* Farben wie Morse Trainer / Morse Message App */
+    --bg: #292A2B; --fg: #FFFFFF; --muted: #8E8E93;
+    --card: rgba(0,0,0,.3); --accent: #E0A870; --accent-fg: #000000;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.45 ui-monospace, "SF Mono", Menlo, monospace;
+    display: flex; min-height: 100vh; min-height: 100dvh;
+    align-items: center; justify-content: center; padding: 24px 16px;
+  }
+  main { width: 100%; max-width: 440px; display: grid; gap: 20px; }
+  h1 { font-size: 28px; margin: 0; color: var(--accent); text-align: center; }
+  .card { background: var(--card); border-radius: 8px; padding: 18px; display: grid; gap: 10px; }
+  .card { text-align: center; padding: 28px 18px; }
+  .card img { width: 72px; height: 72px; border-radius: 16px; margin: 0 auto; }
+  .title { font-weight: 600; }
+  .info { color: var(--muted); font-size: 15px; font-variant-numeric: tabular-nums; }
+  button, a.btn {
+    appearance: none; border: 0; border-radius: 6px; padding: 15px 18px;
+    font: inherit; font-weight: 600; text-align: center; text-decoration: none; cursor: pointer;
+    width: 100%;
+  }
+  #play { background: var(--accent); color: var(--accent-fg); }
+  a.btn { background: var(--card); color: var(--accent); display: block; }
+  .hint { color: var(--muted); font-size: 13px; text-align: center; margin: 0; }
+  .empty { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>MORSE MESSAGE</h1>
+
+  <!-- Bewusst ohne Anzeige von Code oder Klartext: hören, nicht ablesen. -->
+  <div class="card">
+    <img src="../icon-512.png" alt="">
+    <div class="title" id="title">Morse-Nachricht</div>
+    <div class="info" id="info"></div>
+  </div>
+
+  <button id="play" type="button">▶︎ Abspielen</button>
+  <a class="btn" id="openApp" href="#">In Morse Message öffnen</a>
+  <p class="hint">Ohne App wird die Nachricht hier im Browser abgespielt.</p>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  // ── Parameter aus dem Link lesen (gleiche Grenzen wie in der App) ───────
+  const params = new URLSearchParams(location.search);
+  const clamp = (v, lo, hi, def) => {
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) ? Math.min(Math.max(n, lo), hi) : def;
+  };
+  // m = kompakt kodiert (neue Links), c = Klartext-Morse (ältere Links)
+  function unpack(packed) {
+    try {
+      const b64 = packed.replace(/-/g, "+").replace(/_/g, "/");
+      const bin = atob(b64 + "===".slice((b64.length + 3) % 4));
+      const pad = bin.charCodeAt(0);
+      if (!(pad < 4)) return "";
+      const tokens = [];
+      for (let i = 1; i < bin.length; i++) {
+        const byte = bin.charCodeAt(i);
+        for (let k = 0; k < 4; k++) tokens.push((byte >> (6 - 2 * k)) & 3);
+      }
+      tokens.length = Math.max(0, tokens.length - pad);
+      return tokens.map(t => [".", "-", " ", " / "][t]).join("");
+    } catch { return ""; }
+  }
+  const packed = (params.get("m") || "").slice(0, 4000);
+  const raw = packed ? unpack(packed) : (params.get("c") || "").slice(0, 4000);
+  const wpm = clamp(params.get("w"), 5, 30, 20);
+  const freq = 620;   // feste Tonhöhe wie in der App und im Morse Trainer
+  // Abstands-Faktoren wie in der App (1 = Standard 3 bzw. 7 Dit, max. 10)
+  const spacing = v => { const n = parseFloat(v); return Number.isFinite(n) ? Math.min(Math.max(n, 1), 10) : 1; };
+  const letterFactor = spacing(params.get("ls"));
+  const wordFactor = spacing(params.get("ws"));
+
+  // Normalisieren wie MorseCode.normalize(_:)
+  const normalize = s => s
+    .replace(/…/g, "...").replace(/—/g, "--")
+    .replace(/[·•∙]/g, ".").replace(/[–−_]/g, "-").replace(/\|/g, "/")
+    .split("/")
+    .map(w => w.trim().split(/\s+/).map(l => l.replace(/[^.\-]/g, "")).filter(Boolean).join(" "))
+    .filter(Boolean)
+    .join(" / ");
+
+  const morse = normalize(raw);
+  const titleEl = document.getElementById("title");
+  const infoEl = document.getElementById("info");
+  const playBtn = document.getElementById("play");
+  const openApp = document.getElementById("openApp");
+
+  if (!morse) {
+    titleEl.textContent = "Keine Nachricht im Link.";
+    titleEl.classList.add("empty");
+    playBtn.disabled = true;
+    playBtn.style.opacity = .4;
+  } else {
+    const seconds = (timeline(morse).total * 1.2 / wpm).toLocaleString("de-DE",
+      { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    infoEl.textContent = `${wpm} WPM · ${seconds} s`;
+  }
+
+  // Fallback-Button: öffnet die App über das Custom Scheme
+  // (hilfreich, falls iOS Universal Links für diese Domain "vergessen" hat).
+  openApp.href = "morseapp://play" + location.search;
+
+  // ── PARIS-Timing → Ton-Segmente in Dit-Einheiten ──────────────────────────
+  function timeline(code) {
+    const letterGap = 3 * letterFactor;
+    const wordGap = Math.max(7 * wordFactor, letterGap + 4);   // wie MorseTimeline
+    const tones = []; let cursor = 0;
+    for (const word of code.split(" / ")) {
+      const letters = word.split(" ").filter(Boolean);
+      if (!letters.length) continue;
+      if (tones.length) cursor += wordGap;              // Wortpause
+      letters.forEach((letter, li) => {
+        if (li > 0) cursor += letterGap;                // Buchstabenpause
+        [...letter].forEach((sym, si) => {
+          if (si > 0) cursor += 1;                      // Symbolpause
+          const len = sym === "-" ? 3 : 1;
+          tones.push([cursor, len]); cursor += len;
+        });
+      });
+    }
+    return { tones, total: cursor };
+  }
+
+  // ── Web Audio ────────────────────────────────────────────────────────────
+  let ctx = null, osc = null, gain = null, endTimer = null;
+
+  function stop() {
+    clearTimeout(endTimer);
+    if (ctx && gain) {
+      const t = ctx.currentTime;
+      gain.gain.cancelScheduledValues(t);
+      gain.gain.setValueAtTime(gain.gain.value, t);
+      gain.gain.linearRampToValueAtTime(0, t + 0.005);  // klickfreies Ausblenden
+      osc.stop(t + 0.02);
+    }
+    osc = gain = null;
+    playBtn.textContent = "▶︎ Abspielen";
+  }
+
+  function play() {
+    // iOS Safari 17+: Wiedergabe auch bei aktivem Stumm-Schalter
+    if (navigator.audioSession) navigator.audioSession.type = "playback";
+
+    ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+    ctx.resume();
+
+    const dit = 1.2 / wpm;                 // PARIS: Dit = 1200 ms / WPM
+    const ramp = Math.min(0.005, dit / 2); // 5 ms Attack/Release
+    const amp = 0.5;
+    const start = ctx.currentTime + 0.06;
+    const { tones, total } = timeline(morse);
+
+    osc = ctx.createOscillator();
+    gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+
+    for (const [s, len] of tones) {
+      const t0 = start + s * dit, t1 = start + (s + len) * dit;
+      gain.gain.setValueAtTime(0, t0);
+      gain.gain.linearRampToValueAtTime(amp, t0 + ramp);
+      gain.gain.setValueAtTime(amp, t1 - ramp);
+      gain.gain.linearRampToValueAtTime(0, t1);
+    }
+
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(ctx.currentTime);
+    osc.stop(start + total * dit + 0.05);
+
+    playBtn.textContent = "■ Stop";
+    endTimer = setTimeout(() => { osc = gain = null; playBtn.textContent = "▶︎ Abspielen"; },
+                          (0.06 + total * dit + 0.1) * 1000);
+  }
+
+  // Browser erlauben Audio erst nach einer Nutzeraktion → Button statt Auto-Play.
+  playBtn.addEventListener("click", () => (osc ? stop() : play()));
+})();
+</script>
+</body>
+</html>
