@@ -1,1 +1,13 @@
-
+   {
+     "applinks": {
+       "details": [
+         {
+           "appIDs": [ "UKB7B6QZ9W.de.roland.MorseMessage" ],
+           "components": [
+             { "/": "/play",   "comment": "Morse-Nachricht abspielen" },
+             { "/": "/play/*", "comment": "Morse-Nachricht abspielen" }
+           ]
+         }
+       ]
+     }
+   }
