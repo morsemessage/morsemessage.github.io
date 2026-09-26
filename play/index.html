@@ -51,6 +51,13 @@
   #play:disabled { opacity: .4; cursor: default; }
 
   /* Store-Hinweis – identisch auf Start- und Nachrichtenseite */
+  /* Einstellungen wie section() + SettingRow in der App */
+  .settings { background: var(--section); border-radius: 8px; padding: 14px; display: grid; gap: 10px; }
+  .settings .label { font-size: 11px; letter-spacing: 1.2px; color: rgba(142,142,147,.7); text-transform: uppercase; }
+  .settings .row { display: flex; justify-content: space-between; font-size: 14px; }
+  .settings input[type=range] { width: 100%; accent-color: var(--accent); height: 31px; margin: 0; }
+  .settings.disabled { opacity: .4; }
+
   .store { color: var(--muted); font-size: 14px; text-align: center; margin: 0; }
   a.get {
     display: block; text-align: center; text-decoration: none; font-weight: 700;
@@ -71,6 +78,12 @@
 
   <button id="play" type="button"></button>
 
+  <section class="settings" id="settings">
+    <div class="label" data-t="settings"></div>
+    <div class="row"><span data-t="speed"></span><span id="wpmValue"></span></div>
+    <input type="range" id="wpm" min="5" max="64" step="1">
+  </section>
+
   <p class="store" id="storeSoon" data-t="storeSoon"></p>
   <a class="get" id="storeLink" href="#" hidden data-t="storeButton"></a>
 </main>
@@ -90,6 +103,7 @@
     de: {
       title: "Morse-Nachricht", empty: "Keine Nachricht im Link.",
       play: "▶ Abspielen", stop: "■ Stopp",
+      settings: "Einstellungen", speed: "Geschwindigkeit (WPM)",
       storeSoon: "Bald im App Store für iPhone.",
       storeButton: "Im App Store laden",
       locale: "de-DE"
@@ -97,6 +111,7 @@
     en: {
       title: "Morse message", empty: "No message in this link.",
       play: "▶ Play", stop: "■ Stop",
+      settings: "Settings", speed: "Speed (WPM)",
       storeSoon: "Coming soon to the App Store for iPhone.",
       storeButton: "Download on the App Store",
       locale: "en-US"
@@ -109,10 +124,6 @@
 
   // ── Parameter aus dem Link lesen (gleiche Grenzen wie in der App) ───────
   const params = new URLSearchParams(location.search);
-  const clamp = (v, lo, hi, def) => {
-    const n = parseInt(v, 10);
-    return Number.isFinite(n) ? Math.min(Math.max(n, lo), hi) : def;
-  };
   // m = kompakt kodiert (neue Links), c = Klartext-Morse (ältere Links)
   function unpack(packed) {
     try {
@@ -131,15 +142,17 @@
   }
   const packed = (params.get("m") || "").slice(0, 4000);
   const raw = packed ? unpack(packed) : (params.get("c") || "").slice(0, 4000);
-  const wpm = clamp(params.get("w"), 5, 64, 20);
+  // Tempo gehört dem Hörer, nicht dem Absender: Angaben aus älteren Links
+  // (w, lp, wp, ls, ws) werden ignoriert. Der Hörer stellt es per Regler
+  // ein; der Browser merkt sich den Wert (Standard wie in der App: 20).
+  function storedWpm() {
+    try {
+      const n = parseInt(localStorage.getItem("morseMessage.wpm"), 10);
+      return Number.isFinite(n) ? Math.min(Math.max(n, 5), 64) : 20;
+    } catch { return 20; }
+  }
+  let wpm = storedWpm();
   const freq = 620;   // feste Tonhöhe wie in der App und im Morse Trainer
-  // Pausen wie in der App: lp/wp = zusätzliche Sekunden (neu),
-  // ls/ws = Faktor auf die Normpause (ältere Links)
-  const num = (v, lo, hi, def) => { const n = parseFloat(v); return Number.isFinite(n) ? Math.min(Math.max(n, lo), hi) : def; };
-  const letterFactor = num(params.get("ls"), 1, 10, 1);
-  const wordFactor = num(params.get("ws"), 1, 10, 1);
-  const extraLetter = num(params.get("lp"), 0, 7, 0);
-  const extraWord = num(params.get("wp"), 0, 7, 0);
 
   // Normalisieren wie MorseCode.normalize(_:)
   const normalize = s => s
@@ -157,9 +170,8 @@
 
   // ── PARIS-Timing → Ton-Segmente in Dit-Einheiten ──────────────────────────
   function timeline(code) {
-    const dit = 1.2 / wpm;
-    const letterGap = 3 * letterFactor + extraLetter / dit;
-    const wordGap = Math.max(7 * wordFactor + extraWord / dit, letterGap + 4);   // wie MorseTimeline
+    const letterGap = 3;   // Normabstände wie in der App (ohne Zusatzpausen)
+    const wordGap = 7;
     const tones = []; let cursor = 0;
     for (const word of code.split(" / ")) {
       const letters = word.split(" ").filter(Boolean);
@@ -178,6 +190,25 @@
   }
 
   // ── Texte einsetzen ──────────────────────────────────────────────────────
+  const wpmSlider = document.getElementById("wpm");
+  const wpmValue = document.getElementById("wpmValue");
+  const settingsEl = document.getElementById("settings");
+
+  function updateInfo() {
+    wpmValue.textContent = String(wpm);
+    if (!morse) return;
+    const seconds = (timeline(morse).total * 1.2 / wpm).toLocaleString(T.locale,
+      { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    infoEl.textContent = `${wpm} WPM · ${seconds} s`;
+  }
+
+  /// Regler während der Wiedergabe sperren (wie in der App).
+  function setPlaying(isPlaying) {
+    playBtn.textContent = isPlaying ? T.stop : T.play;
+    wpmSlider.disabled = isPlaying;
+    settingsEl.classList.toggle("disabled", isPlaying);
+  }
+
   function applyTexts() {
     document.documentElement.lang = lang;
     document.querySelectorAll("[data-t]").forEach(el => { el.textContent = T[el.dataset.t]; });
@@ -189,12 +220,17 @@
       playBtn.disabled = true;
     } else {
       titleEl.textContent = T.title;
-      const seconds = (timeline(morse).total * 1.2 / wpm).toLocaleString(T.locale,
-        { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-      infoEl.textContent = `${wpm} WPM · ${seconds} s`;
     }
-    playBtn.textContent = osc ? T.stop : T.play;
+    updateInfo();
+    setPlaying(false);
   }
+
+  wpmSlider.value = String(wpm);
+  wpmSlider.addEventListener("input", () => {
+    wpm = parseInt(wpmSlider.value, 10);
+    try { localStorage.setItem("morseMessage.wpm", String(wpm)); } catch { /* egal */ }
+    updateInfo();
+  });
 
   // Store: Link eingetragen → Knopf, sonst "Bald im App Store"
   if (APP_STORE_URL) {
@@ -217,7 +253,7 @@
       osc.stop(t + 0.02);
     }
     osc = gain = null;
-    playBtn.textContent = T.play;
+    setPlaying(false);
   }
 
   function play() {
@@ -251,8 +287,8 @@
     osc.start(ctx.currentTime);
     osc.stop(start + total * dit + 0.05);
 
-    playBtn.textContent = T.stop;
-    endTimer = setTimeout(() => { osc = gain = null; playBtn.textContent = T.play; },
+    setPlaying(true);
+    endTimer = setTimeout(() => { osc = gain = null; setPlaying(false); },
                           (0.06 + total * dit + 0.1) * 1000);
   }
 
