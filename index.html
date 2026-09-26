@@ -2,30 +2,91 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Morse Message</title>
+
+<!-- Link-Vorschau (zweisprachig) -->
+<meta property="og:title" content="📡 Morse Message">
+<meta property="og:description" content="Morse-Nachrichten zum Hören · Morse messages to hear">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://morsemessage.github.io/icon-512.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="/icon-512.png">
-<meta property="og:title" content="Morse Message">
-<meta property="og:image" content="https://morsemessage.github.io/icon-512.png">
+
 <style>
   :root {
     /* Farben wie Morse Trainer / Morse Message App */
     --bg: #292A2B; --fg: #FFFFFF; --muted: #8E8E93;
-    --card: rgba(0,0,0,.3); --accent: #E0A870; --accent-fg: #000000;
+    --card: rgba(0,0,0,.3); --section: rgba(0,0,0,.2);
+    --accent: #E0A870; --accent-fg: #000000;
   }
-  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
-         background:var(--bg); color:var(--fg); padding:16px;
-         font:16px/1.45 ui-monospace, "SF Mono", Menlo, monospace; text-align:center; }
-  p { color:var(--muted); }
-  h1 { color:var(--accent); }
-  body { background:var(--bg); }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.45 ui-monospace, "SF Mono", Menlo, monospace;
+    display: flex; min-height: 100vh; min-height: 100dvh;
+    align-items: center; justify-content: center; padding: 24px 16px;
+  }
+  main { width: 100%; max-width: 440px; display: grid; gap: 16px; }
+  h1 { font-size: 28px; margin: 0; color: var(--accent); text-align: center; }
+
+
+  .card { background: var(--card); border-radius: 8px; padding: 28px 18px; display: grid; gap: 10px; text-align: center; }
+  .card img { width: 72px; height: 72px; border-radius: 16px; margin: 0 auto; }
+  .title { font-weight: 700; }
+  .info { color: var(--muted); font-size: 15px; font-variant-numeric: tabular-nums; min-height: 1.45em; }
+
+
+  /* Store-Hinweis – identisch auf Start- und Nachrichtenseite */
+  .store { color: var(--muted); font-size: 14px; text-align: center; margin: 0; }
+  a.get {
+    display: block; text-align: center; text-decoration: none; font-weight: 700;
+    padding: 14px; border-radius: 6px; background: var(--card); color: var(--accent);
+  }
 </style>
 </head>
 <body>
-  <main>
-    <img src="/icon-512.png" alt="" width="96" height="96" style="border-radius:22px"><h1>MORSE MESSAGE</h1>
-    <p>Morse-Nachrichten per Link verschicken und abhören.</p>
-  </main>
+<main>
+  <h1>MORSE MESSAGE</h1>
+
+  <div class="card">
+    <img src="/icon-512.png" alt="">
+    <div class="title">Morse Message</div>
+    <div class="info" data-t="tagline"></div>
+  </div>
+
+  <p class="store" id="storeSoon" data-t="storeSoon"></p>
+  <a class="get" id="storeLink" href="#" hidden data-t="storeButton"></a>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  // Sobald die App im Store ist, hier den Link eintragen (wie in play/index.html).
+  const APP_STORE_URL = "";
+
+  const TEXTS = {
+    de: { tagline: "Morse-Nachrichten zum Hören.",
+          storeSoon: "Bald im App Store für iPhone.", storeButton: "Im App Store laden" },
+    en: { tagline: "Morse messages to hear.",
+          storeSoon: "Coming soon to the App Store for iPhone.", storeButton: "Download on the App Store" }
+  };
+
+  // Sprache kommt vom Browser: Deutsch für deutschsprachige Browser, sonst Englisch
+  const lang = (navigator.language || "en").toLowerCase().startsWith("de") ? "de" : "en";
+  const T = TEXTS[lang];
+  document.documentElement.lang = lang;
+  document.querySelectorAll("[data-t]").forEach(el => { el.textContent = T[el.dataset.t]; });
+
+  if (APP_STORE_URL) {
+    const link = document.getElementById("storeLink");
+    link.href = APP_STORE_URL;
+    link.hidden = false;
+    document.getElementById("storeSoon").hidden = true;
+  }
+})();
+</script>
 </body>
 </html>
