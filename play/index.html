@@ -133,10 +133,13 @@
   const raw = packed ? unpack(packed) : (params.get("c") || "").slice(0, 4000);
   const wpm = clamp(params.get("w"), 5, 64, 20);
   const freq = 620;   // feste Tonhöhe wie in der App und im Morse Trainer
-  // Abstands-Faktoren wie in der App (1 = Standard 3 bzw. 7 Dit, max. 10)
-  const spacing = v => { const n = parseFloat(v); return Number.isFinite(n) ? Math.min(Math.max(n, 1), 10) : 1; };
-  const letterFactor = spacing(params.get("ls"));
-  const wordFactor = spacing(params.get("ws"));
+  // Pausen wie in der App: lp/wp = zusätzliche Sekunden (neu),
+  // ls/ws = Faktor auf die Normpause (ältere Links)
+  const num = (v, lo, hi, def) => { const n = parseFloat(v); return Number.isFinite(n) ? Math.min(Math.max(n, lo), hi) : def; };
+  const letterFactor = num(params.get("ls"), 1, 10, 1);
+  const wordFactor = num(params.get("ws"), 1, 10, 1);
+  const extraLetter = num(params.get("lp"), 0, 7, 0);
+  const extraWord = num(params.get("wp"), 0, 7, 0);
 
   // Normalisieren wie MorseCode.normalize(_:)
   const normalize = s => s
@@ -154,8 +157,9 @@
 
   // ── PARIS-Timing → Ton-Segmente in Dit-Einheiten ──────────────────────────
   function timeline(code) {
-    const letterGap = 3 * letterFactor;
-    const wordGap = Math.max(7 * wordFactor, letterGap + 4);   // wie MorseTimeline
+    const dit = 1.2 / wpm;
+    const letterGap = 3 * letterFactor + extraLetter / dit;
+    const wordGap = Math.max(7 * wordFactor + extraWord / dit, letterGap + 4);   // wie MorseTimeline
     const tones = []; let cursor = 0;
     for (const word of code.split(" / ")) {
       const letters = word.split(" ").filter(Boolean);
